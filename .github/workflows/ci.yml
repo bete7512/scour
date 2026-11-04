@@ -1,0 +1,47 @@
+name: ci
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: test / ${{ matrix.os }} / go ${{ matrix.go }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest]
+        go: [stable, oldstable]
+        include:
+          - { os: macos-latest, go: stable }
+          - { os: windows-latest, go: stable }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+      - run: go test -race -count=1 ./...
+        if: runner.os != 'Windows'
+      - run: go test -count=1 ./...
+        if: runner.os == 'Windows'
+
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: stable
+      - run: test -z "$(gofmt -l .)" || { gofmt -d .; exit 1; }
+      - run: go vet ./...
+      - uses: golangci/golangci-lint-action@v8
+        with:
+          version: latest
+      - run: go mod tidy && git diff --exit-code -- go.mod go.sum
+      - run: go test -run='^$' -fuzz=FuzzParseDirents -fuzztime=30s .
+      - run: go test -run='^$' -bench=. -benchtime=1x ./...
